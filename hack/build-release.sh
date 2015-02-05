@@ -47,3 +47,9 @@ mkdir -p "${bindir}"
 tar mxzf "${releases}" -C "${bindir}"
 
 os::build::make_openshift_binary_symlinks
+
+# image binaries aren't included in the release tar- bring them down from the build container
+# and copy to the _output/local/go/bin dir for inclusion during image builds.
+for binary in "${OPENSHIFT_IMAGE_BINARIES[@]}"; do
+  docker cp $(cat ${context}/cid):/go/src/github.com/openshift/origin/_output/local/go/bin/${binary} "${bindir}"
+done

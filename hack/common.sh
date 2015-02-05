@@ -27,6 +27,7 @@ readonly OS_COMPILE_PLATFORMS=(
   linux/amd64
 )
 readonly OS_COMPILE_TARGETS=(
+  images/pod
 )
 readonly OS_COMPILE_BINARIES=("${OS_COMPILE_TARGETS[@]-##*/}")
 
@@ -54,6 +55,9 @@ readonly OPENSHIFT_BINARY_SYMLINKS=(
 )
 readonly OPENSHIFT_BINARY_COPY=(
   osc
+)
+readonly OPENSHIFT_IMAGE_BINARIES=(
+  pod
 )
 
 # os::build::binaries_from_targets take a list of build targets and return the
@@ -260,8 +264,17 @@ os::build::place_bins() {
       local full_binpath_src="${OS_GOPATH}/bin${platform_src}"
       if [[ -d "${full_binpath_src}" ]]; then
         mkdir -p "${OS_OUTPUT_BINPATH}/${platform}"
+
+        # Image binaries are not yet considered part of a release- exclude
+        # them from the tar but leave them around for inclusion in images.
+        local -a excludes=()
+        local binary
+        for binary in "${OPENSHIFT_IMAGE_BINARIES[@]}"; do
+          excludes+=("--exclude=${binary}")
+        done
+
         find "${full_binpath_src}" -maxdepth 1 -type f -exec \
-          rsync -pt {} "${OS_OUTPUT_BINPATH}/${platform}" \;
+          rsync "${excludes[@]}" -pt {} "${OS_OUTPUT_BINPATH}/${platform}" \;
 
         if [[ "${OS_RELEASE_ARCHIVES-}" != "" ]]; then
           local platform_segment="${platform//\//-}"

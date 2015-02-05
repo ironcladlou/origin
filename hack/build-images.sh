@@ -34,13 +34,11 @@ tar xzf "${releases}" -C "${imagedir}"
 cp -f "${imagedir}/openshift" images/origin/bin
 cp -f "${imagedir}/openshift" images/router/haproxy/bin
 
+# copy image binaries to their image bin directories
+cp -f _output/local/go/bin/pod images/pod/bin
+
 # build hello-openshift binary
 "${OS_ROOT}/hack/build-go.sh" examples/hello-openshift
-
-# build pod binary
-# TODO: move me to build release
-"${OS_ROOT}/hack/build-go.sh" images/pod
-cp -f "_output/local/go/bin/pod" images/pod/bin
 
 # images that depend on scratch
 echo "--- openshift/origin-pod ---"
