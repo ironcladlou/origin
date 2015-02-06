@@ -1,0 +1,14 @@
+{
+  "kind": "Project",
+  "apiVersion": "v1beta1",
+  "metadata": {
+    "name": "demo",
+    "labels": {
+      "name": "demo"
+    },
+    "annotations": {
+      "description": "This is an example project to demonstrate OpenShift v3"
+    }
+  },    
+  "displayName": "Demo",
+}

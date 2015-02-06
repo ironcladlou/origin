@@ -1,0 +1,94 @@
+{
+    "kind": "DeploymentConfig",
+    "apiVersion": "v1beta1",
+    "metadata": {
+        "name": "demo-deployment",
+        "namespace": "demo",
+        "selfLink": "/osapi/v1beta1/deploymentConfigs/demo-deployment?namespace=demo",
+        "uid": "8f2337f8-ae06-11e4-bc3e-a8206620bbe3",
+        "resourceVersion": "RESOURCE_VERSION",
+        "creationTimestamp": "2015-02-06T08:46:32-05:00"
+    },
+    "triggers": [
+        {
+            "type": "ConfigChange"
+        }
+    ],
+    "template": {
+        "strategy": {
+            "type": "Recreate"
+        },
+        "controllerTemplate": {
+            "replicas": 1,
+            "replicaSelector": {
+                "name": "demo-deployment"
+            },
+            "podTemplate": {
+                "desiredState": {
+                    "manifest": {
+                        "version": "v1beta2",
+                        "id": "",
+                        "volumes": null,
+                        "containers": [
+                            {
+                                "name": "demo-container-1",
+                                "image": "openshift/hello-openshift",
+                                "ports": [
+                                    {
+                                        "containerPort": 8080,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "env": [
+                                    {
+                                        "name": "VAR",
+                                        "key": "VAR",
+                                        "value": "UPDATED"
+                                    }
+                                ],
+                                "resources": {},
+                                "imagePullPolicy": "PullIfNotPresent",
+                                "capabilities": {}
+                            },
+                            {
+                                "name": "demo-container-2",
+                                "image": "openshift/hello-openshift",
+                                "ports": [
+                                    {
+                                        "containerPort": 8081,
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "env": [
+                                    {
+                                        "name": "VAR",
+                                        "key": "VAR",
+                                        "value": "ORIG"
+                                    }
+                                ],
+                                "resources": {},
+                                "imagePullPolicy": "PullIfNotPresent",
+                                "capabilities": {}
+                            }
+                        ],
+                        "restartPolicy": {
+                            "always": {}
+                        },
+                        "dnsPolicy": "ClusterFirst"
+                    }
+                },
+                "labels": {
+                    "name": "demo-deployment"
+                }
+            }
+        }
+    },
+    "latestVersion": 1,
+    "details": {
+        "causes": [
+            {
+                "type": "ConfigChange"
+            }
+        ]
+    }
+}

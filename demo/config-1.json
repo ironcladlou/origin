@@ -1,0 +1,50 @@
+{
+  "kind": "DeploymentConfig",
+  "apiVersion": "v1beta1",
+  "metadata": {
+    "name": "demo-deployment"
+  },
+  "triggers": [
+    {
+      "type": "ConfigChange"
+    }
+  ],
+  "template": {
+    "strategy": {
+      "type": "Recreate"
+    },
+    "controllerTemplate": {
+      "replicas": 1,
+      "replicaSelector": {
+        "name": "demo-deployment"
+      },
+      "podTemplate": {
+        "desiredState": {
+          "manifest": {
+            "version": "v1beta1",
+            "containers": [
+              {
+                "name": "demo-container-1",
+                "image": "openshift/hello-openshift",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "VAR",
+                    "value": "ORIG"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "labels": {
+          "name": "demo-deployment"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,64 @@
+demo/launch.sh
+watch -n 0.5 openshift cli describe -n demo deploymentConfigs demo-deployment
+
+- Today I'm going to demonstrate some new deployment features. I'll be using some new CLI commands to demonstrate deployment rollbacks.
+
+- First I'll create a simple deployment configuration which defines a single container and a replica count of 1.
+
+osc create deploymentConfigs -n demo -f demo/config-1.json
+
+
+- In the bottom terminal pane, I'm using the CLI describe command to show details about my deployment configuration. This view shows me:
+  - The name of the configuration
+  - The current deployment version
+  - The deployment strategy
+  - Any triggers defined for the configuration
+  - The replication controller template for deployments
+  - Details about the latest deployment for this configuration version
+
+- Throughout the demo, changes I make to the deployment configuration will result in updates to this view, so pay close attention to the state of the template and the latest deployment.
+
+- Now I'll update my deployment configuration to add another container to the template and adjust the environment variable of the original container. This change will trigger a new deployment.
+
+demo/process.sh demo/config-2.json | osc update -n demo deploymentConfigs demo-deployment -f -
+
+
+- I can see that the deployment configuration is updated with the new template. I also see that a new deployment has been created to reflect the new template.
+
+- Now I'll make one final change to my configuration to increase the replica count to 3 and to update the second container's environment.
+
+demo/process.sh demo/config-3.json | osc update -n demo deploymentConfigs demo-deployment -f -
+
+
+- As expected, a new deployment is created, this time with more pods to reflect the updated replica count. Notice the pod status shows 3 pods running.
+
+- But, I decided I don't want those environment variable changes to the containers. I want to roll back to the last deployment's template.
+
+- I'll use the rollback command to get a preview of what that rollback would look like.
+
+osc rollback -n demo demo-deployment-2 --dry-run
+
+
+- I can see that the environment variable would change to the previous value, which is what I want. So I'll perform the rollback.
+
+osc rollback -n demo demo-deployment-2
+
+
+- I can see that the deployment configuration is updated with the reverted template. I also see that a new deployment has been created to reflect the reverted template.
+
+- But now, I've decided I want to just scrap all of this work, and go all the way back to my original deployment configuration. I even want to roll back my replica count to its original value. I'll use the rollback command to get a preview.
+
+- Notice that I use use a new rollback option to indicate I want to revert the scaling settings in addition to the pod template.
+
+osc rollback -n demo demo-deployment-1 --change-scaling-settings --dry-run
+
+
+- I see that the template would include just the original container, and the old replica count of 1, which is what I want. So I'll perform the rollback.
+
+osc rollback -n demo demo-deployment-1 --change-scaling-settings
+
+
+- I can see that the template looks the same as when I started. I can also see that a new deployment has been created which looks the same as the very first step.
+
+- For more details about what you can do with deployments and rollbacks, check out the deployments section of the new user's guide.
+
