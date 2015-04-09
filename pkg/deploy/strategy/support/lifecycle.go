@@ -69,6 +69,7 @@ func (e *HookExecutor) executeExecNewPod(hook *deployapi.ExecNewPodHook, deploym
 	if err != nil {
 		return fmt.Errorf("couldn't create watch for pod %s/%s: %s", deployment.Namespace, podName, err)
 	}
+	defer podWatch.Stop()
 
 	// Try to create the pod
 	pod, err := e.PodClient.CreatePod(deployment.Namespace, podSpec)
