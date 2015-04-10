@@ -1,0 +1,82 @@
+{
+  "kind": "DeploymentConfig",
+  "apiVersion": "v1beta1",
+  "metadata": {
+    "name": "hello"
+  },
+  "template": {
+    "strategy": {
+      "type": "Recreate",
+      "recreateParams": {
+        "pre": {
+          "failurePolicy": "Abort",
+          "execNewPod": {
+            "containerName": "support",
+            "command": [
+              "/bin/false"
+            ],
+            "env": [
+              {
+                "name": "CUSTOM_VAR1",
+                "value": "custom_value1"
+              }
+            ]
+          }
+        },
+        "post": {
+          "failurePolicy": "Ignore",
+          "execNewPod": {
+            "containerName": "support",
+            "command": [
+              "/bin/true"
+            ],
+            "env": [
+              {
+                "name": "CUSTOM_VAR2",
+                "value": "custom_value2"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "controllerTemplate": {
+      "replicas": 1,
+      "replicaSelector": {
+        "name": "hellopod"
+      },
+      "podTemplate": {
+        "desiredState": {
+          "manifest": {
+            "version": "v1beta1",
+            "containers": [
+              {
+                "name": "hello-openshift",
+                "image": "openshift/hello-openshift",
+                "ports": [
+                  {
+                    "containerPort": 8080
+                  }
+                ],
+                "env": [
+                  {
+                    "name": "NAME1",
+                    "value": "VALUE1"
+                  }
+                ]
+              },
+              {
+                "name": "support",
+                "image": "busybox",
+                "command": ["/bin/sleep", "999999"]
+              }
+            ]
+          }
+        },
+        "labels": {
+          "name": "hellopod"
+        }
+      }
+    }
+  }
+}
