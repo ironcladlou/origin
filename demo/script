@@ -1,0 +1,11 @@
+script
+
+watch ~/Projects/go/bin/openshift cli describe -n test deploymentConfig hello
+
+osc ex new-project test
+osc cli create -n test -f ~/Projects/origin/templates/hello-hooks-deployment.json
+
+docker ps -a | grep deployer | head -n 1 | awk '{ print $1 }' | xargs docker logs
+osc cli get -n test deploymentConfigs hello -o json | sed s/Abort/Ignore/ | osc cli update -n test deploymentConfigs hello -f -
+osc cli rollback -n test hello-1
+
