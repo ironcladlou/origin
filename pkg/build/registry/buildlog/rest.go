@@ -15,6 +15,7 @@ import (
 	genericrest "k8s.io/kubernetes/pkg/registry/generic/rest"
 	"k8s.io/kubernetes/pkg/registry/pod"
 	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/util"
 	"k8s.io/kubernetes/pkg/watch"
 
 	"github.com/openshift/origin/pkg/build/api"
@@ -120,6 +121,8 @@ func (r *REST) waitForBuild(ctx kapi.Context, build *api.Build) error {
 	done := make(chan struct{})
 	errchan := make(chan error)
 	go func(ch <-chan watch.Event) {
+		defer util.HandleCrash()
+
 		for event := range ch {
 			obj, ok := event.Object.(*api.Build)
 			if !ok {
