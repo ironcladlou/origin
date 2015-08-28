@@ -228,6 +228,12 @@ View, start, cancel, or retry a deployment
 
   // Cancel the in-progress deployment based on 'frontend'
   $ openshift cli deploy frontend --cancel
+
+  // View the logs of the latest deployment for 'frontend'
+  $ openshift cli deploy frontend --logs
+
+  // View the logs of the Nth deployment for 'frontend'
+  $ openshift cli deploy frontend --logs --version=N
 ----
 ====
 

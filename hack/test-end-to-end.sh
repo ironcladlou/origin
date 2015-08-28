@@ -85,6 +85,13 @@ function wait_for_build() {
   set -e
 }
 
+# Wait for deployment to run
+function wait_for_deployment() {
+	echo "[INFO] Waiting for $1 namespace database deployment to run"
+	wait_for_command "oc describe dc/database -n $1 | grep -i running" $((10*TIME_MIN)) "oc describe dc/database -n $1 | grep -i -e failed -e complete"
+	echo "[INFO] Initial deployment for database is running"
+	oc deploy database --logs -n $1 > $LOG_DIR/$1deployment.log
+}
 
 # Start All-in-one server and wait for health
 TMPDIR="${TMPDIR:-"/tmp"}"
@@ -194,6 +201,8 @@ wait_for_build_start "test"
 # Ensure that the build pod doesn't allow exec
 [ "$(oc rsh ${BUILD_ID}-build 2>&1 | grep 'forbidden')" ]
 wait_for_build "test"
+echo "[INFO] Waiting for database deployment from ${STI_CONFIG_FILE} and streaming its logs..."
+wait_for_deployment "test"
 wait_for_app "test"
 
 echo "[INFO] Starting build from ${STI_CONFIG_FILE} with non-existing commit..."
