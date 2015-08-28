@@ -427,7 +427,6 @@ type GitInfo struct {
 // BuildLog is the (unused) resource associated with the build log redirector
 type BuildLog struct {
 	kapi.TypeMeta `json:",inline"`
-	kapi.ListMeta `json:"metadata,omitempty"`
 }
 
 // BuildRequest is the resource used to pass parameters to build generator

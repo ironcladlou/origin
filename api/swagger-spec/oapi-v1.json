@@ -4213,6 +4213,81 @@
     ]
    },
    {
+    "path": "/oapi/v1/namespaces/{namespace}/deploymentconfigs/{name}/log",
+    "description": "OpenShift REST API, version v1",
+    "operations": [
+     {
+      "type": "v1.DeploymentLog",
+      "method": "GET",
+      "summary": "read log of the specified DeploymentLog",
+      "nickname": "readNamespacedDeploymentLogLog",
+      "parameters": [
+       {
+        "type": "string",
+        "paramType": "query",
+        "name": "pretty",
+        "description": "If 'true', then the output is pretty printed.",
+        "required": false,
+        "allowMultiple": false
+       },
+       {
+        "type": "boolean",
+        "paramType": "query",
+        "name": "follow",
+        "description": "if true indicates that the log should be streamed; defaults to false",
+        "required": false,
+        "allowMultiple": false
+       },
+       {
+        "type": "boolean",
+        "paramType": "query",
+        "name": "nowait",
+        "description": "if true indicates that the server should not wait for a log to be available before returning; defaults to false",
+        "required": false,
+        "allowMultiple": false
+       },
+       {
+        "type": "",
+        "paramType": "query",
+        "name": "version",
+        "description": "the version of the deploymentConfig for which to view logs",
+        "required": false,
+        "allowMultiple": false
+       },
+       {
+        "type": "string",
+        "paramType": "path",
+        "name": "namespace",
+        "description": "object name and auth scope, such as for teams and projects",
+        "required": true,
+        "allowMultiple": false
+       },
+       {
+        "type": "string",
+        "paramType": "path",
+        "name": "name",
+        "description": "name of the DeploymentLog",
+        "required": true,
+        "allowMultiple": false
+       }
+      ],
+      "responseMessages": [
+       {
+        "code": 200,
+        "message": "OK",
+        "responseModel": "v1.DeploymentLog"
+       }
+      ],
+      "produces": [
+       "application/json"
+      ],
+      "consumes": [
+       "*/*"
+      ]
+     }
+    ]
+   },
+   {
     "path": "/oapi/v1/namespaces/{namespace}/generatedeploymentconfigs/{name}",
     "description": "OpenShift REST API, version v1",
     "operations": [
@@ -14421,9 +14496,6 @@
      "apiVersion": {
       "type": "string",
       "description": "version of the schema the object should have; see http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#resources"
-     },
-     "metadata": {
-      "$ref": "v1.ListMeta"
      }
     }
    },
@@ -15953,6 +16025,19 @@
      "from": {
       "$ref": "v1.ObjectReference",
       "description": "a reference the changed object which triggered a deployment"
+     }
+    }
+   },
+   "v1.DeploymentLog": {
+    "id": "v1.DeploymentLog",
+    "properties": {
+     "kind": {
+      "type": "string",
+      "description": "kind of object, in CamelCase; cannot be updated; see http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#types-kinds"
+     },
+     "apiVersion": {
+      "type": "string",
+      "description": "version of the schema the object should have; see http://releases.k8s.io/HEAD/docs/devel/api-conventions.md#resources"
      }
     }
    },

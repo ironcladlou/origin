@@ -692,9 +692,6 @@ func convert_api_BuildLog_To_v1beta3_BuildLog(in *buildapi.BuildLog, out *apiv1b
 	if err := convert_api_TypeMeta_To_v1beta3_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
-	if err := convert_api_ListMeta_To_v1beta3_ListMeta(&in.ListMeta, &out.ListMeta, s); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -1073,9 +1070,6 @@ func convert_v1beta3_BuildLog_To_api_BuildLog(in *apiv1beta3.BuildLog, out *buil
 	if err := convert_v1beta3_TypeMeta_To_api_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
 		return err
 	}
-	if err := convert_v1beta3_ListMeta_To_api_ListMeta(&in.ListMeta, &out.ListMeta, s); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -1385,6 +1379,34 @@ func convert_api_DeploymentConfigRollbackSpec_To_v1beta3_DeploymentConfigRollbac
 	return nil
 }
 
+func convert_api_DeploymentLog_To_v1beta3_DeploymentLog(in *deployapi.DeploymentLog, out *deployapiv1beta3.DeploymentLog, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*deployapi.DeploymentLog))(in)
+	}
+	if err := convert_api_TypeMeta_To_v1beta3_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	return nil
+}
+
+func convert_api_DeploymentLogOptions_To_v1beta3_DeploymentLogOptions(in *deployapi.DeploymentLogOptions, out *deployapiv1beta3.DeploymentLogOptions, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*deployapi.DeploymentLogOptions))(in)
+	}
+	if err := convert_api_TypeMeta_To_v1beta3_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	out.Follow = in.Follow
+	out.NoWait = in.NoWait
+	if in.Version != nil {
+		out.Version = new(int)
+		*out.Version = *in.Version
+	} else {
+		out.Version = nil
+	}
+	return nil
+}
+
 func convert_v1beta3_DeploymentConfigList_To_api_DeploymentConfigList(in *deployapiv1beta3.DeploymentConfigList, out *deployapi.DeploymentConfigList, s conversion.Scope) error {
 	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
 		defaulting.(func(*deployapiv1beta3.DeploymentConfigList))(in)
@@ -1432,6 +1454,34 @@ func convert_v1beta3_DeploymentConfigRollbackSpec_To_api_DeploymentConfigRollbac
 	out.IncludeTemplate = in.IncludeTemplate
 	out.IncludeReplicationMeta = in.IncludeReplicationMeta
 	out.IncludeStrategy = in.IncludeStrategy
+	return nil
+}
+
+func convert_v1beta3_DeploymentLog_To_api_DeploymentLog(in *deployapiv1beta3.DeploymentLog, out *deployapi.DeploymentLog, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*deployapiv1beta3.DeploymentLog))(in)
+	}
+	if err := convert_v1beta3_TypeMeta_To_api_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	return nil
+}
+
+func convert_v1beta3_DeploymentLogOptions_To_api_DeploymentLogOptions(in *deployapiv1beta3.DeploymentLogOptions, out *deployapi.DeploymentLogOptions, s conversion.Scope) error {
+	if defaulting, found := s.DefaultingInterface(reflect.TypeOf(*in)); found {
+		defaulting.(func(*deployapiv1beta3.DeploymentLogOptions))(in)
+	}
+	if err := convert_v1beta3_TypeMeta_To_api_TypeMeta(&in.TypeMeta, &out.TypeMeta, s); err != nil {
+		return err
+	}
+	out.Follow = in.Follow
+	out.NoWait = in.NoWait
+	if in.Version != nil {
+		out.Version = new(int)
+		*out.Version = *in.Version
+	} else {
+		out.Version = nil
+	}
 	return nil
 }
 
@@ -3203,6 +3253,8 @@ func init() {
 		convert_api_DeploymentConfigList_To_v1beta3_DeploymentConfigList,
 		convert_api_DeploymentConfigRollbackSpec_To_v1beta3_DeploymentConfigRollbackSpec,
 		convert_api_DeploymentConfigRollback_To_v1beta3_DeploymentConfigRollback,
+		convert_api_DeploymentLogOptions_To_v1beta3_DeploymentLogOptions,
+		convert_api_DeploymentLog_To_v1beta3_DeploymentLog,
 		convert_api_EnvVarSource_To_v1beta3_EnvVarSource,
 		convert_api_EnvVar_To_v1beta3_EnvVar,
 		convert_api_GitBuildSource_To_v1beta3_GitBuildSource,
@@ -3283,6 +3335,8 @@ func init() {
 		convert_v1beta3_DeploymentConfigList_To_api_DeploymentConfigList,
 		convert_v1beta3_DeploymentConfigRollbackSpec_To_api_DeploymentConfigRollbackSpec,
 		convert_v1beta3_DeploymentConfigRollback_To_api_DeploymentConfigRollback,
+		convert_v1beta3_DeploymentLogOptions_To_api_DeploymentLogOptions,
+		convert_v1beta3_DeploymentLog_To_api_DeploymentLog,
 		convert_v1beta3_EnvVarSource_To_api_EnvVarSource,
 		convert_v1beta3_EnvVar_To_api_EnvVar,
 		convert_v1beta3_GitBuildSource_To_api_GitBuildSource,

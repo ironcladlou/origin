@@ -802,11 +802,6 @@ func deepCopy_v1beta3_BuildLog(in apiv1beta3.BuildLog, out *apiv1beta3.BuildLog,
 	} else {
 		out.TypeMeta = newVal.(pkgapiv1beta3.TypeMeta)
 	}
-	if newVal, err := c.DeepCopy(in.ListMeta); err != nil {
-		return err
-	} else {
-		out.ListMeta = newVal.(pkgapiv1beta3.ListMeta)
-	}
 	return nil
 }
 
@@ -1388,6 +1383,32 @@ func deepCopy_v1beta3_DeploymentDetails(in deployapiv1beta3.DeploymentDetails, o
 		}
 	} else {
 		out.Causes = nil
+	}
+	return nil
+}
+
+func deepCopy_v1beta3_DeploymentLog(in deployapiv1beta3.DeploymentLog, out *deployapiv1beta3.DeploymentLog, c *conversion.Cloner) error {
+	if newVal, err := c.DeepCopy(in.TypeMeta); err != nil {
+		return err
+	} else {
+		out.TypeMeta = newVal.(pkgapiv1beta3.TypeMeta)
+	}
+	return nil
+}
+
+func deepCopy_v1beta3_DeploymentLogOptions(in deployapiv1beta3.DeploymentLogOptions, out *deployapiv1beta3.DeploymentLogOptions, c *conversion.Cloner) error {
+	if newVal, err := c.DeepCopy(in.TypeMeta); err != nil {
+		return err
+	} else {
+		out.TypeMeta = newVal.(pkgapiv1beta3.TypeMeta)
+	}
+	out.Follow = in.Follow
+	out.NoWait = in.NoWait
+	if in.Version != nil {
+		out.Version = new(int)
+		*out.Version = *in.Version
+	} else {
+		out.Version = nil
 	}
 	return nil
 }
@@ -2580,6 +2601,8 @@ func init() {
 		deepCopy_v1beta3_DeploymentConfigSpec,
 		deepCopy_v1beta3_DeploymentConfigStatus,
 		deepCopy_v1beta3_DeploymentDetails,
+		deepCopy_v1beta3_DeploymentLog,
+		deepCopy_v1beta3_DeploymentLogOptions,
 		deepCopy_v1beta3_DeploymentStrategy,
 		deepCopy_v1beta3_DeploymentTriggerImageChangeParams,
 		deepCopy_v1beta3_DeploymentTriggerPolicy,
