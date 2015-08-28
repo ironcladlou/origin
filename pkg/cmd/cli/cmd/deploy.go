@@ -23,6 +23,7 @@ import (
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
+// DeployOptions holds all the options for the `deploy` command
 type DeployOptions struct {
 	out             io.Writer
 	osClient        client.Interface
@@ -35,6 +36,7 @@ type DeployOptions struct {
 	deployLatest         bool
 	retryDeploy          bool
 	cancelDeploy         bool
+	logsDeploy           bool
 	enableTriggers       bool
 }
 
@@ -75,7 +77,13 @@ If no options are given, shows information about the latest deployment.`
   $ %[1]s deploy frontend --retry
 
   // Cancel the in-progress deployment based on 'frontend'
-  $ %[1]s deploy frontend --cancel`
+  $ %[1]s deploy frontend --cancel
+
+  // View the logs of the latest deployment for 'frontend'
+  $ %[1]s deploy frontend --logs
+
+  // View the logs of the Nth deployment for 'frontend'
+  $ %[1]s deploy frontend --logs --version=N`
 )
 
 // NewCmdDeploy creates a new `deploy` command.
@@ -83,6 +91,8 @@ func NewCmdDeploy(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.C
 	options := &DeployOptions{
 		baseCommandName: fullName,
 	}
+	logOptions := &DeployLogOptions{}
+	version := ""
 
 	cmd := &cobra.Command{
 		Use:     "deploy DEPLOYMENTCONFIG",
@@ -90,6 +100,22 @@ func NewCmdDeploy(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.C
 		Long:    deployLong,
 		Example: fmt.Sprintf(deployExample, fullName),
 		Run: func(cmd *cobra.Command, args []string) {
+			if options.logsDeploy {
+				logOptions.version = version
+				if err := logOptions.Complete(f, args, out); err != nil {
+					cmdutil.CheckErr(err)
+				}
+
+				if err := logOptions.Validate(args); err != nil {
+					cmdutil.CheckErr(cmdutil.UsageError(cmd, err.Error()))
+				}
+
+				if err := logOptions.RunDeployLog(); err != nil {
+					cmdutil.CheckErr(err)
+				}
+				return
+			}
+
 			if err := options.Complete(f, args, out); err != nil {
 				cmdutil.CheckErr(err)
 			}
@@ -107,7 +133,10 @@ func NewCmdDeploy(fullName string, f *clientcmd.Factory, out io.Writer) *cobra.C
 	cmd.Flags().BoolVar(&options.deployLatest, "latest", false, "Start a new deployment now.")
 	cmd.Flags().BoolVar(&options.retryDeploy, "retry", false, "Retry the latest failed deployment.")
 	cmd.Flags().BoolVar(&options.cancelDeploy, "cancel", false, "Cancel the in-progress deployment.")
+	cmd.Flags().BoolVar(&options.logsDeploy, "logs", false, "See the logs of the latest deployment.")
 	cmd.Flags().BoolVar(&options.enableTriggers, "enable-triggers", false, "Enables all image triggers for the deployment config.")
+	// TODO: Make this work with the rest of the flags?
+	cmd.Flags().StringVar(&version, "version", "", "Version of the deployment config.")
 
 	return cmd
 }
@@ -157,11 +186,14 @@ func (o *DeployOptions) Validate(args []string) error {
 	if o.cancelDeploy {
 		numOptions++
 	}
+	if o.logsDeploy {
+		numOptions++
+	}
 	if o.enableTriggers {
 		numOptions++
 	}
 	if numOptions > 1 {
-		return errors.New("only one of --latest, --retry, --cancel, or --enable-triggers is allowed.")
+		return errors.New("only one of --latest, --retry, --cancel, --logs, or --enable-triggers is allowed.")
 	}
 	return nil
 }
@@ -238,7 +270,7 @@ func (o *DeployOptions) retry(config *deployapi.DeploymentConfig, out io.Writer)
 	deployment, err := o.kubeClient.ReplicationControllers(config.Namespace).Get(deploymentName)
 	if err != nil {
 		if kerrors.IsNotFound(err) {
-			return fmt.Errorf("Unable to find the latest deployment (#%d).\nYou can start a new deployment using the --latest option.", config.LatestVersion)
+			return fmt.Errorf("unable to find the latest deployment (#%d).\nYou can start a new deployment using the --latest option.", config.LatestVersion)
 		}
 		return err
 	}
@@ -257,12 +289,12 @@ func (o *DeployOptions) retry(config *deployapi.DeploymentConfig, out io.Writer)
 	// Delete the deployer pod as well as the deployment hooks pods, if any
 	pods, err := o.kubeClient.Pods(config.Namespace).List(deployutil.DeployerPodSelector(deploymentName), fields.Everything())
 	if err != nil {
-		return fmt.Errorf("Failed to list deployer/hook pods for deployment #%d: %v", config.LatestVersion, err)
+		return fmt.Errorf("failed to list deployer/hook pods for deployment #%d: %v", config.LatestVersion, err)
 	}
 	for _, pod := range pods.Items {
 		err := o.kubeClient.Pods(pod.Namespace).Delete(pod.Name, kapi.NewDeleteOptions(0))
 		if err != nil {
-			return fmt.Errorf("Failed to delete deployer/hook pod %s for deployment #%d: %v", pod.Name, config.LatestVersion, err)
+			return fmt.Errorf("failed to delete deployer/hook pod %s for deployment #%d: %v", pod.Name, config.LatestVersion, err)
 		}
 	}
 
@@ -272,7 +304,7 @@ func (o *DeployOptions) retry(config *deployapi.DeploymentConfig, out io.Writer)
 	delete(deployment.Annotations, deployapi.DeploymentCancelledAnnotation)
 	_, err = o.kubeClient.ReplicationControllers(deployment.Namespace).Update(deployment)
 	if err == nil {
-		fmt.Fprintf(out, "retried #%d\n", config.LatestVersion)
+		fmt.Fprintf(out, "Retried #%d\n", config.LatestVersion)
 	}
 	return err
 }
@@ -284,7 +316,7 @@ func (o *DeployOptions) cancel(config *deployapi.DeploymentConfig, out io.Writer
 		return err
 	}
 	if len(deployments.Items) == 0 {
-		fmt.Fprintln(out, "no deployments found to cancel")
+		fmt.Fprintln(out, "No deployments found to cancel")
 		return nil
 	}
 	failedCancellations := []string{}
@@ -305,10 +337,10 @@ func (o *DeployOptions) cancel(config *deployapi.DeploymentConfig, out io.Writer
 			deployment.Annotations[deployapi.DeploymentStatusReasonAnnotation] = deployapi.DeploymentCancelledByUser
 			_, err := o.kubeClient.ReplicationControllers(deployment.Namespace).Update(&deployment)
 			if err == nil {
-				fmt.Fprintf(out, "cancelled deployment #%d\n", config.LatestVersion)
+				fmt.Fprintf(out, "Cancelled deployment #%d\n", config.LatestVersion)
 				anyCancelled = true
 			} else {
-				fmt.Fprintf(out, "couldn't cancel deployment #%d (status: %s): %v\n", deployutil.DeploymentVersionFor(&deployment), status, err)
+				fmt.Fprintf(out, "Couldn't cancel deployment #%d (status: %s): %v\n", deployutil.DeploymentVersionFor(&deployment), status, err)
 				failedCancellations = append(failedCancellations, strconv.Itoa(deployutil.DeploymentVersionFor(&deployment)))
 			}
 		}
@@ -317,7 +349,7 @@ func (o *DeployOptions) cancel(config *deployapi.DeploymentConfig, out io.Writer
 		return fmt.Errorf("couldn't cancel deployment %s", strings.Join(failedCancellations, ", "))
 	}
 	if !anyCancelled {
-		fmt.Fprintln(out, "no active deployments to cancel")
+		fmt.Fprintln(out, "No active deployments to cancel")
 	}
 	return nil
 }
@@ -340,5 +372,113 @@ func (o *DeployOptions) reenableTriggers(config *deployapi.DeploymentConfig, out
 		return err
 	}
 	fmt.Fprintf(out, "enabled image triggers: %s\n", strings.Join(enabled, ","))
+	return nil
+}
+
+// DeployLogOptions holds all the options for the `deploy --log` command
+type DeployLogOptions struct {
+	out      io.Writer
+	osClient client.Interface
+
+	name      string
+	namespace string
+
+	options deployapi.DeploymentLogOptions
+	version string
+}
+
+// Complete the DeployLogOptions
+func (o *DeployLogOptions) Complete(f *clientcmd.Factory, args []string, out io.Writer) error {
+	var err error
+
+	o.osClient, _, err = f.Clients()
+	if err != nil {
+		return err
+	}
+	o.namespace, _, err = f.DefaultNamespace()
+	if err != nil {
+		return err
+	}
+
+	o.out = out
+
+	if len(args) > 0 {
+		params := strings.Split(args[0], "/")
+		switch len(params) {
+		case 1:
+			o.name = params[0]
+		case 2:
+			// dc/name format
+			o.name = params[1]
+		default:
+			return fmt.Errorf("invalid resource type/name argument: %s", args[0])
+		}
+	}
+
+	if len(o.version) > 0 {
+		v64, err := strconv.ParseInt(o.version, 10, 0)
+		if err != nil {
+			return err
+		}
+		o.options.Version = intp(v64)
+	}
+
+	// Hardcode follow for now. Ideally oc deploy should have subcommands
+	o.options.Follow = true
+
+	return nil
+}
+
+func intp(n int64) *int {
+	num := new(int)
+	*num = int(n)
+	return num
+}
+
+// Validate all the necessary deploy log options
+func (o *DeployLogOptions) Validate(args []string) error {
+	if len(args) == 0 || len(args[0]) == 0 {
+		return errors.New("a DeploymentConfig name is required.")
+	}
+	if len(args) > 1 {
+		return errors.New("only one DeploymentConfig name is supported as argument.")
+	}
+	return nil
+}
+
+// RunDeployLog sets up the client for deploy --logs and executes the command
+func (o *DeployLogOptions) RunDeployLog() error {
+	return o.logs(o.namespace, o.name, o.options, o.out)
+}
+
+// logs returns the logs for the latest deployment
+func (o *DeployLogOptions) logs(namespace, name string, opts deployapi.DeploymentLogOptions, out io.Writer) error {
+	req, err := o.osClient.DeploymentLogs(namespace).Get(name, opts)
+	if err != nil {
+		return err
+	}
+	readCloser, err := req.Stream()
+	if err != nil {
+		return err
+	}
+	defer readCloser.Close()
+
+	written, err := io.Copy(out, readCloser)
+	if err != nil {
+		return err
+	}
+
+	// If nothing is written, it means there are no logs returned. Normally
+	// in two cases we will get no logs: either if we don't want to wait
+	// for the deployer pod to be created (NoWait = true) or if the deployer
+	// pod has been deleted (successful deployment)
+	if written == 0 && !opts.NoWait {
+		if opts.Version == nil {
+			fmt.Fprintln(out, "Latest deployment successfully made active, no logs to show.")
+			return nil
+		}
+		fmt.Fprintf(out, "Deployment %s successfully made active, no logs to show.\n", deployutil.DeploymentNameForConfigVersion(name, *opts.Version))
+	}
+
 	return nil
 }
