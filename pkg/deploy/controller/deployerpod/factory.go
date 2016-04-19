@@ -15,6 +15,7 @@ import (
 	osclient "github.com/openshift/origin/pkg/client"
 	controller "github.com/openshift/origin/pkg/controller"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
@@ -63,14 +64,21 @@ func (factory *DeployerPodControllerFactory) Create() controller.RunnableControl
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(factory.KubeClient.Events(""))
 
+	decodeConfig := func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
+		return deployutil.DecodeDeploymentConfig(deployment, factory.Codec)
+	}
+	recorder := eventBroadcaster.NewRecorder(kapi.EventSource{Component: "deployerpod-controller"})
 	podController := &DeployerPodController{
-		store:   deploymentStore,
-		client:  factory.Client,
-		kClient: factory.KubeClient,
-		decodeConfig: func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
-			return deployutil.DecodeDeploymentConfig(deployment, factory.Codec)
+		store:        deploymentStore,
+		client:       factory.Client,
+		kClient:      factory.KubeClient,
+		decodeConfig: decodeConfig,
+		recorder:     recorder,
+		statusUpdater: &deploycontroller.DefaultStatusUpdater{
+			KubeClient:   factory.KubeClient,
+			DecodeConfig: decodeConfig,
+			Recorder:     recorder,
 		},
-		recorder: eventBroadcaster.NewRecorder(kapi.EventSource{Component: "deployerpod-controller"}),
 	}
 
 	return &controller.RetryController{

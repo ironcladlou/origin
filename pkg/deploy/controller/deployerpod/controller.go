@@ -14,6 +14,7 @@ import (
 
 	osclient "github.com/openshift/origin/pkg/client"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
@@ -31,6 +32,8 @@ type DeployerPodController struct {
 
 	// recorder is used to record events.
 	recorder record.EventRecorder
+	// statusUpdater should be used to transition the status of a deployment.
+	statusUpdater deploycontroller.DeploymentStatusUpdater
 }
 
 // transientError is an error which will be retried indefinitely.
@@ -136,36 +139,31 @@ func (c *DeployerPodController) Handle(pod *kapi.Pod) error {
 		}
 	}
 
-	if deployutil.CanTransitionPhase(currentStatus, nextStatus) {
-		deployment.Annotations[deployapi.DeploymentStatusAnnotation] = string(nextStatus)
-		if _, err := c.kClient.ReplicationControllers(deployment.Namespace).Update(deployment); err != nil {
-			if kerrors.IsNotFound(err) {
-				return nil
-			}
-			return fmt.Errorf("couldn't update Deployment %s to status %s: %v", deployutil.LabelForDeployment(deployment), nextStatus, err)
-		}
-		glog.V(4).Infof("Updated deployment %s status from %s to %s (scale: %d)", deployutil.LabelForDeployment(deployment), currentStatus, nextStatus, deployment.Spec.Replicas)
+	updated, err := c.statusUpdater.UpdateStatus(deployment, nextStatus)
+	if err != nil {
+		return err
+	}
+	deployment = updated
 
-		// If the deployment was canceled, trigger a reconcilation of its deployment config
-		// so that the latest complete deployment can immediately rollback in place of the
-		// canceled deployment.
-		if nextStatus == deployapi.DeploymentStatusFailed && deployutil.IsDeploymentCancelled(deployment) {
-			// If we are unable to get the deployment config, then the deploymentconfig controller will
-			// perform its duties once the resync interval forces the deploymentconfig to be reconciled.
-			name := deployutil.DeploymentConfigNameFor(deployment)
-			kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
-				config, err := c.client.DeploymentConfigs(deployment.Namespace).Get(name)
-				if err != nil {
-					return err
-				}
-				if config.Annotations == nil {
-					config.Annotations = make(map[string]string)
-				}
-				config.Annotations[deployapi.DeploymentCancelledAnnotation] = strconv.Itoa(config.Status.LatestVersion)
-				_, err = c.client.DeploymentConfigs(config.Namespace).Update(config)
+	// If the deployment was canceled, trigger a reconcilation of its deployment config
+	// so that the latest complete deployment can immediately rollback in place of the
+	// canceled deployment.
+	if deployutil.DeploymentStatusFor(deployment) == deployapi.DeploymentStatusFailed && deployutil.IsDeploymentCancelled(deployment) {
+		// If we are unable to get the deployment config, then the deploymentconfig controller will
+		// perform its duties once the resync interval forces the deploymentconfig to be reconciled.
+		name := deployutil.DeploymentConfigNameFor(deployment)
+		kclient.RetryOnConflict(kclient.DefaultRetry, func() error {
+			config, err := c.client.DeploymentConfigs(deployment.Namespace).Get(name)
+			if err != nil {
 				return err
-			})
-		}
+			}
+			if config.Annotations == nil {
+				config.Annotations = make(map[string]string)
+			}
+			config.Annotations[deployapi.DeploymentCancelledAnnotation] = strconv.Itoa(config.Status.LatestVersion)
+			_, err = c.client.DeploymentConfigs(config.Namespace).Update(config)
+			return err
+		})
 	}
 
 	return nil

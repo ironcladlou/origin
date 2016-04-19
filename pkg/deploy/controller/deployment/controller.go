@@ -11,6 +11,7 @@ import (
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 	"github.com/openshift/origin/pkg/util"
 )
@@ -39,6 +40,8 @@ type DeploymentController struct {
 	decodeConfig func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error)
 	// recorder is used to record events.
 	recorder record.EventRecorder
+	// statusUpdater should be used to transition the status of a deployment.
+	statusUpdater deploycontroller.DeploymentStatusUpdater
 }
 
 // fatalError is an error which can't be retried.
@@ -204,17 +207,14 @@ func (c *DeploymentController) Handle(deployment *kapi.ReplicationController) er
 		}
 	}
 
-	if deployutil.CanTransitionPhase(currentStatus, nextStatus) || deploymentScaled {
-		deployment.Annotations[deployapi.DeploymentStatusAnnotation] = string(nextStatus)
-		if _, err := c.deploymentClient.updateDeployment(deployment.Namespace, deployment); err != nil {
-			if config, decodeErr := c.decodeConfig(deployment); decodeErr == nil {
-				c.recorder.Eventf(config, kapi.EventTypeWarning, "FailedUpdate", "Cannot update deployment %s status to %s: %v", deployutil.LabelForDeployment(deployment), nextStatus, err)
-			} else {
-				c.recorder.Eventf(deployment, kapi.EventTypeWarning, "FailedUpdate", "Cannot update deployment %s status to %s: %v", deployutil.LabelForDeployment(deployment), nextStatus, err)
-			}
-			return fmt.Errorf("couldn't update deployment %s to status %s: %v", deployutil.LabelForDeployment(deployment), nextStatus, err)
-		}
-		glog.V(4).Infof("Updated deployment %s status from %s to %s (scale: %d)", deployutil.LabelForDeployment(deployment), currentStatus, nextStatus, deployment.Spec.Replicas)
+	if deploymentScaled {
+		// TODO: Previous code would update status if the status transition was
+		// valid OR deploymentScaled. Why would we want to allow the transition to
+		// an invalid status when deploymentScaled?
+	}
+	_, err := c.statusUpdater.UpdateStatus(deployment, nextStatus)
+	if err != nil {
+		return err
 	}
 	return nil
 }

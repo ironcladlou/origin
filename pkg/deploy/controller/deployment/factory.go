@@ -16,6 +16,7 @@ import (
 
 	controller "github.com/openshift/origin/pkg/controller"
 	deployapi "github.com/openshift/origin/pkg/deploy/api"
+	deploycontroller "github.com/openshift/origin/pkg/deploy/controller"
 	deployutil "github.com/openshift/origin/pkg/deploy/util"
 )
 
@@ -52,6 +53,10 @@ func (factory *DeploymentControllerFactory) Create() controller.RunnableControll
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartRecordingToSink(factory.KubeClient.Events(""))
 
+	decodeConfig := func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
+		return deployutil.DecodeDeploymentConfig(deployment, factory.Codec)
+	}
+	recorder := eventBroadcaster.NewRecorder(kapi.EventSource{Component: "deployment-controller"})
 	deployController := &DeploymentController{
 		serviceAccount: factory.ServiceAccount,
 		deploymentClient: &deploymentClientImpl{
@@ -93,10 +98,13 @@ func (factory *DeploymentControllerFactory) Create() controller.RunnableControll
 		makeContainer: func(strategy *deployapi.DeploymentStrategy) (*kapi.Container, error) {
 			return factory.makeContainer(strategy)
 		},
-		decodeConfig: func(deployment *kapi.ReplicationController) (*deployapi.DeploymentConfig, error) {
-			return deployutil.DecodeDeploymentConfig(deployment, factory.Codec)
+		decodeConfig: decodeConfig,
+		recorder:     recorder,
+		statusUpdater: &deploycontroller.DefaultStatusUpdater{
+			KubeClient:   factory.KubeClient,
+			DecodeConfig: decodeConfig,
+			Recorder:     recorder,
 		},
-		recorder: eventBroadcaster.NewRecorder(kapi.EventSource{Component: "deployment-controller"}),
 	}
 
 	return &controller.RetryController{
