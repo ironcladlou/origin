@@ -36,7 +36,6 @@ import (
 	servicehelpers "k8s.io/cloud-provider/service/helpers"
 	"k8s.io/klog"
 
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilnet "k8s.io/utils/net"
 )
 
@@ -515,7 +514,7 @@ func (az *Cloud) findServiceIPAddress(ctx context.Context, clusterName string, s
 	return lbStatus.Ingress[0].IP, nil
 }
 
-func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domainNameLabel, clusterName string, shouldPIPExisted bool) (*network.PublicIPAddress, error) {
+func (az *Cloud) ensurePublicIPExists(service *v1.Service, ipv6 bool, pipName string, domainNameLabel, clusterName string, shouldPIPExisted bool) (*network.PublicIPAddress, error) {
 	pipResourceGroup := az.getPublicIPAddressResourceGroup(service)
 	pip, existsPip, err := az.getPublicIPAddress(pipResourceGroup, pipName)
 	if err != nil {
@@ -563,23 +562,18 @@ func (az *Cloud) ensurePublicIPExists(service *v1.Service, pipName string, domai
 		}
 	}
 
-	if utilfeature.DefaultFeatureGate.Enabled(IPv6DualStack) {
-		// TODO: (khenidak) if we ever enable IPv6 single stack, then we should
-		// not wrap the following in a feature gate
-		ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
-		if ipv6 {
-			pip.PublicIPAddressVersion = network.IPv6
-			klog.V(2).Infof("service(%s): pip(%s) - creating as ipv6 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
+	if ipv6 {
+		pip.PublicIPAddressVersion = network.IPv6
+		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv6 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
 
-			pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.Dynamic
-			if az.useStandardLoadBalancer() {
-				// standard sku must have static allocation method for ipv6
-				pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.Static
-			}
-		} else {
-			pip.PublicIPAddressVersion = network.IPv4
-			klog.V(2).Infof("service(%s): pip(%s) - creating as ipv4 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
+		pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.Dynamic
+		if az.useStandardLoadBalancer() {
+			// standard sku must have static allocation method for ipv6
+			pip.PublicIPAddressPropertiesFormat.PublicIPAllocationMethod = network.Static
 		}
+	} else {
+		pip.PublicIPAddressVersion = network.IPv4
+		klog.V(2).Infof("service(%s): pip(%s) - creating as ipv4 for clusterIP:%v", serviceName, *pip.Name, service.Spec.ClusterIP)
 	}
 
 	klog.V(2).Infof("ensurePublicIPExists for service(%s): pip(%s) - creating", serviceName, *pip.Name)
@@ -772,13 +766,12 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 			}
 		}
 		if !foundConfig {
-			// construct FrontendIPConfigurationPropertiesFormat
-			var fipConfigurationProperties *network.FrontendIPConfigurationPropertiesFormat
+			ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
 			if isInternal {
 				// azure does not support ILB for IPv6 yet.
 				// TODO: remove this check when ILB supports IPv6 *and* the SDK
 				// have been rev'ed to 2019* version
-				if utilnet.IsIPv6String(service.Spec.ClusterIP) {
+				if ipv6 {
 					return nil, fmt.Errorf("ensure(%s): lb(%s) - internal load balancers does not support IPv6", serviceName, lbName)
 				}
 
@@ -808,27 +801,47 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 					configProperties.PrivateIPAllocationMethod = network.Dynamic
 				}
 
-				fipConfigurationProperties = &configProperties
+				newConfigs = append(newConfigs,
+					network.FrontendIPConfiguration{
+						Name:                                    to.StringPtr(lbFrontendIPConfigName),
+						FrontendIPConfigurationPropertiesFormat: &configProperties,
+					})
 			} else {
 				pipName, shouldPIPExisted, err := az.determinePublicIPName(clusterName, service)
 				if err != nil {
 					return nil, err
 				}
 				domainNameLabel := getPublicIPDomainNameLabel(service)
-				pip, err := az.ensurePublicIPExists(service, pipName, domainNameLabel, clusterName, shouldPIPExisted)
+
+				if ipv6 {
+					pip4, err := az.ensurePublicIPExists(service, false, pipName+"-v4", domainNameLabel, clusterName, shouldPIPExisted)
+					if err != nil {
+						return nil, err
+					}
+					configProperties := &network.FrontendIPConfigurationPropertiesFormat{
+						PublicIPAddress: &network.PublicIPAddress{ID: pip4.ID},
+					}
+					newConfigs = append(newConfigs,
+						network.FrontendIPConfiguration{
+							Name:                                    to.StringPtr(lbFrontendIPConfigName+"-v4"),
+							FrontendIPConfigurationPropertiesFormat: configProperties,
+						})
+				}
+
+				pip, err := az.ensurePublicIPExists(service, ipv6, pipName, domainNameLabel, clusterName, shouldPIPExisted)
 				if err != nil {
 					return nil, err
 				}
-				fipConfigurationProperties = &network.FrontendIPConfigurationPropertiesFormat{
+				configProperties := &network.FrontendIPConfigurationPropertiesFormat{
 					PublicIPAddress: &network.PublicIPAddress{ID: pip.ID},
 				}
+				newConfigs = append(newConfigs,
+					network.FrontendIPConfiguration{
+						Name:                                    to.StringPtr(lbFrontendIPConfigName),
+						FrontendIPConfigurationPropertiesFormat: configProperties,
+					})
 			}
 
-			newConfigs = append(newConfigs,
-				network.FrontendIPConfiguration{
-					Name:                                    to.StringPtr(lbFrontendIPConfigName),
-					FrontendIPConfigurationPropertiesFormat: fipConfigurationProperties,
-				})
 			klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - adding", serviceName, wantLb, lbFrontendIPConfigName)
 			dirtyConfigs = true
 		}
@@ -1518,7 +1531,8 @@ func (az *Cloud) reconcilePublicIP(clusterName string, service *v1.Service, lbNa
 		// Confirm desired public ip resource exists
 		var pip *network.PublicIPAddress
 		domainNameLabel := getPublicIPDomainNameLabel(service)
-		if pip, err = az.ensurePublicIPExists(service, desiredPipName, domainNameLabel, clusterName, shouldPIPExisted); err != nil {
+		ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
+		if pip, err = az.ensurePublicIPExists(service, ipv6, desiredPipName, domainNameLabel, clusterName, shouldPIPExisted); err != nil {
 			return nil, err
 		}
 		return pip, nil

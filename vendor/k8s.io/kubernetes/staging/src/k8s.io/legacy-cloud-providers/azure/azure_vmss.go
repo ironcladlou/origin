@@ -37,7 +37,6 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 	"k8s.io/klog"
 
-	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	utilnet "k8s.io/utils/net"
 )
 
@@ -768,20 +767,11 @@ func (ss *scaleSet) EnsureHostInPool(service *v1.Service, nodeName types.NodeNam
 		return err
 	}
 
-	var primaryIPConfiguration *compute.VirtualMachineScaleSetIPConfiguration
 	// Find primary network interface configuration.
-	if !utilfeature.DefaultFeatureGate.Enabled(IPv6DualStack) {
-		// Find primary IP configuration.
-		primaryIPConfiguration, err = getPrimaryIPConfigFromVMSSNetworkConfig(primaryNetworkInterfaceConfiguration)
-		if err != nil {
-			return err
-		}
-	} else {
-		ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
-		primaryIPConfiguration, err = ss.getConfigForScaleSetByIPFamily(primaryNetworkInterfaceConfiguration, vmName, ipv6)
-		if err != nil {
-			return err
-		}
+	ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
+	primaryIPConfiguration, err := ss.getConfigForScaleSetByIPFamily(primaryNetworkInterfaceConfiguration, vmName, ipv6)
+	if err != nil {
+		return err
 	}
 
 	// Update primary IP configuration's LoadBalancerBackendAddressPools.
