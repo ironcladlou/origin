@@ -254,7 +254,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		select {}
 	}
 
-	if !c.ComponentConfig.Generic.LeaderElection.LeaderElect {
+	if true {
 		run(context.TODO())
 		panic("unreachable")
 	}
