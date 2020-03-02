@@ -1,0 +1,19 @@
+namespace: openshift-kube-controller-manager
+name: kube-controller-manager
+container: kube-controller-manager
+image: golang:1.13.8
+workdir: /okteto
+command: ["bash"]
+activationCommand:
+  - /bin/bash
+  - -c
+  - |-
+    touch /go/findme-activated
+    touch /okteto/findme-activated
+    exec "$0" "$@"
+sshServerPort: 2222
+volumes:
+  - /.vscode-server
+  - /go
+  - /.cache
+  - /.config

@@ -3,7 +3,8 @@
 /third-party
 /.project
 /.vagrant
-/.vscode
+/.vscode/settings.json
+/.vscode/tasks.json
 /.settings
 /cpu.pprof
 /assets/app/config.local.js

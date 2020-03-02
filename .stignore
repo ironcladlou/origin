@@ -1,0 +1,8 @@
+okteto.yml
+.git
+.tito
+.vscode/settings.json
+.vscode/tasks.json
+_output
+.idea
+.github

@@ -1,0 +1,20 @@
+{
+  "go.useLanguageServer": true,
+  "[go]": {
+    "editor.snippetSuggestions": "none",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": true
+    }
+  },
+  "gopls": {
+    "usePlaceholders": true,
+    "completionDocumentation": true
+  },
+  "go.goroot": "/usr/local/go",
+  "go.gopath": "/okteto",
+  "go.toolsEnvVars": {
+    "GO111MODULE": "off",
+    "GOROOT": "/usr/local/go"
+  }
+}
