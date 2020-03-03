@@ -690,25 +690,10 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	}
 	lbName := *lb.Name
 	klog.V(2).Infof("reconcileLoadBalancer for service(%s): lb(%s) wantLb(%t) resolved load balancer name", serviceName, lbName, wantLb)
-
-	type frontend struct {
-		ID   string
-		name string
-		ipv6 bool
-	}
-	frontends := []frontend{{
-		name: az.getFrontendIPConfigName(service, subnet(service)),
-		ID:   az.getFrontendIPConfigID(lbName, az.getFrontendIPConfigName(service, subnet(service))),
-		ipv6: ipv6,
-	}}
-	if ipv6 {
-		name := frontends[0].name + "-v4"
-		frontends = append(frontends, frontend{
-			name: name,
-			ID:   az.getFrontendIPConfigID(lbName, name),
-			ipv6: false,
-		})
-	}
+	lbFrontendIPConfigName := az.getFrontendIPConfigName(service, subnet(service))
+	lbFrontendIPConfigID := az.getFrontendIPConfigID(lbName, lbFrontendIPConfigName)
+	lbv4FrontendIPConfigName := lbFrontendIPConfigName + "-v4"
+	lbv4FrontendIPConfigID := az.getFrontendIPConfigID(lbName, lbv4FrontendIPConfigName)
 
 	lbBackendPoolName := getBackendPoolName(clusterName, service)
 	lbBackendPoolID := az.getBackendPoolID(lbName, lbBackendPoolName)
@@ -772,7 +757,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 				return nil, err
 			}
 			if isFipChanged {
-				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, *config.Name)
+				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, lbFrontendIPConfigName)
 				newConfigs = append(newConfigs[:i], newConfigs[i+1:]...)
 				dirtyConfigs = true
 			}
