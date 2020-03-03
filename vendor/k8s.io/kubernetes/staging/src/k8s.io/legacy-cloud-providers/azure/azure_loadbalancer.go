@@ -680,6 +680,7 @@ func (az *Cloud) isFrontendIPChanged(clusterName string, config network.Frontend
 // nodes only used if wantLb is true
 func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, nodes []*v1.Node, wantLb bool) (*network.LoadBalancer, error) {
 	isInternal := requiresInternalLoadBalancer(service)
+	ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
 	serviceName := getServiceName(service)
 	klog.V(2).Infof("reconcileLoadBalancer for service(%s) - wantLb(%t): started", serviceName, wantLb)
 	lb, _, _, err := az.getServiceLoadBalancer(service, clusterName, nodes, wantLb)
@@ -689,8 +690,26 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	}
 	lbName := *lb.Name
 	klog.V(2).Infof("reconcileLoadBalancer for service(%s): lb(%s) wantLb(%t) resolved load balancer name", serviceName, lbName, wantLb)
-	lbFrontendIPConfigName := az.getFrontendIPConfigName(service, subnet(service))
-	lbFrontendIPConfigID := az.getFrontendIPConfigID(lbName, lbFrontendIPConfigName)
+
+	type frontend struct {
+		ID   string
+		name string
+		ipv6 bool
+	}
+	frontends := []frontend{{
+		name: az.getFrontendIPConfigName(service, subnet(service)),
+		ID:   az.getFrontendIPConfigID(lbName, az.getFrontendIPConfigName(service, subnet(service))),
+		ipv6: ipv6,
+	}}
+	if ipv6 {
+		name := frontends[0].name + "-v4"
+		frontends = append(frontends, frontend{
+			name: name,
+			ID:   az.getFrontendIPConfigID(lbName, name),
+			ipv6: false,
+		})
+	}
+
 	lbBackendPoolName := getBackendPoolName(clusterName, service)
 	lbBackendPoolID := az.getBackendPoolID(lbName, lbBackendPoolName)
 
@@ -740,7 +759,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 		for i := len(newConfigs) - 1; i >= 0; i-- {
 			config := newConfigs[i]
 			if az.serviceOwnsFrontendIP(config, service) {
-				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, lbFrontendIPConfigName)
+				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, *config.Name)
 				newConfigs = append(newConfigs[:i], newConfigs[i+1:]...)
 				dirtyConfigs = true
 			}
@@ -766,7 +785,6 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 			}
 		}
 		if !foundConfig {
-			ipv6 := utilnet.IsIPv6String(service.Spec.ClusterIP)
 			if isInternal {
 				// azure does not support ILB for IPv6 yet.
 				// TODO: remove this check when ILB supports IPv6 *and* the SDK
@@ -819,11 +837,12 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 						return nil, err
 					}
 					configProperties := &network.FrontendIPConfigurationPropertiesFormat{
-						PublicIPAddress: &network.PublicIPAddress{ID: pip4.ID},
+						PublicIPAddress:         &network.PublicIPAddress{ID: pip4.ID},
+						PrivateIPAddressVersion: "IPv4",
 					}
 					newConfigs = append(newConfigs,
 						network.FrontendIPConfiguration{
-							Name:                                    to.StringPtr(lbFrontendIPConfigName+"-v4"),
+							Name:                                    &lbv4FrontendIPConfigName,
 							FrontendIPConfigurationPropertiesFormat: configProperties,
 						})
 				}
@@ -833,7 +852,8 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 					return nil, err
 				}
 				configProperties := &network.FrontendIPConfigurationPropertiesFormat{
-					PublicIPAddress: &network.PublicIPAddress{ID: pip.ID},
+					PublicIPAddress:         &network.PublicIPAddress{ID: pip.ID},
+					PrivateIPAddressVersion: "IPv6",
 				}
 				newConfigs = append(newConfigs,
 					network.FrontendIPConfiguration{
@@ -852,9 +872,17 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	}
 
 	// update probes/rules
-	expectedProbes, expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbFrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout)
+	expectedProbes, expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbFrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "")
 	if err != nil {
 		return nil, err
+	}
+	if ipv6 {
+		ipv4expectedProbes, ipv4expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbv4FrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "-v4")
+		if err != nil {
+			return nil, err
+		}
+		expectedProbes = append(expectedProbes, ipv4expectedProbes...)
+		expectedRules = append(expectedRules, ipv4expectedRules...)
 	}
 
 	// remove unwanted probes
@@ -1009,7 +1037,8 @@ func (az *Cloud) reconcileLoadBalancerRule(
 	lbFrontendIPConfigID string,
 	lbBackendPoolID string,
 	lbName string,
-	lbIdleTimeout *int32) ([]network.Probe, []network.LoadBalancingRule, error) {
+	lbIdleTimeout *int32,
+	ruleNameSuffix string) ([]network.Probe, []network.LoadBalancingRule, error) {
 
 	var ports []v1.ServicePort
 	if wantLb {
@@ -1042,6 +1071,9 @@ func (az *Cloud) reconcileLoadBalancerRule(
 
 		for _, protocol := range protocols {
 			lbRuleName := az.getLoadBalancerRuleName(service, protocol, port.Port, subnet(service))
+			if len(ruleNameSuffix) > 0 {
+				lbRuleName += ruleNameSuffix
+			}
 			klog.V(2).Infof("reconcileLoadBalancerRule lb name (%s) rule name (%s)", lbName, lbRuleName)
 
 			transportProto, _, probeProto, err := getProtocolsFromKubernetesProtocol(protocol)
