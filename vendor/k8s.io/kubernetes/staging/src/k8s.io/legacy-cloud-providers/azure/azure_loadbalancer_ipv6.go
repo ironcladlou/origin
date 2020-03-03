@@ -149,7 +149,12 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 				return nil, err
 			}
 			configProperties := &network.FrontendIPConfigurationPropertiesFormat{
-				PublicIPAddress:         &network.PublicIPAddress{ID: pip.ID},
+				PublicIPAddress: &network.PublicIPAddress{
+					ID: pip.ID,
+					PublicIPAddressPropertiesFormat: &network.PublicIPAddressPropertiesFormat{
+						PublicIPAddressVersion: "IPv6",
+					},
+				},
 				PrivateIPAddressVersion: "IPv6",
 			}
 			newConfigs = append(newConfigs,
@@ -180,7 +185,12 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 				return nil, err
 			}
 			configProperties := &network.FrontendIPConfigurationPropertiesFormat{
-				PublicIPAddress:         &network.PublicIPAddress{ID: pip.ID},
+				PublicIPAddress: &network.PublicIPAddress{
+					ID: pip.ID,
+					PublicIPAddressPropertiesFormat: &network.PublicIPAddressPropertiesFormat{
+						PublicIPAddressVersion: "IPv4",
+					},
+				},
 				PrivateIPAddressVersion: "IPv4",
 			}
 			newConfigs = append(newConfigs,

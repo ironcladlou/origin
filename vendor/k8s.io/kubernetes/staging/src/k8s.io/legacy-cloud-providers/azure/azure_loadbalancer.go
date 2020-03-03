@@ -431,6 +431,7 @@ func (az *Cloud) getServiceLoadBalancerStatus(service *v1.Service, lb *network.L
 	isInternal := requiresInternalLoadBalancer(service)
 	lbFrontendIPConfigName := az.getFrontendIPConfigName(service, subnet(service))
 	serviceName := getServiceName(service)
+	ingresses := []v1.LoadBalancerIngress{}
 	for _, ipConfiguration := range *lb.FrontendIPConfigurations {
 		if lbFrontendIPConfigName == *ipConfiguration.Name {
 			var lbIP *string
@@ -458,8 +459,11 @@ func (az *Cloud) getServiceLoadBalancerStatus(service *v1.Service, lb *network.L
 			}
 
 			klog.V(2).Infof("getServiceLoadBalancerStatus gets ingress IP %q from frontendIPConfiguration %q for service %q", to.String(lbIP), lbFrontendIPConfigName, serviceName)
-			return &v1.LoadBalancerStatus{Ingress: []v1.LoadBalancerIngress{{IP: to.String(lbIP)}}}, nil
+			ingresses = append(ingresses, v1.LoadBalancerIngress{IP: to.String(lbIP)})
 		}
+	}
+	if len(ingresses) > 0 {
+		return &v1.LoadBalancerStatus{Ingress: ingresses}, nil
 	}
 
 	return nil, nil
