@@ -46,8 +46,10 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 	lbv4FrontendIPConfigName := lbFrontendIPConfigName + "-v4"
 	lbv4FrontendIPConfigID := az.getFrontendIPConfigID(lbName, lbv4FrontendIPConfigName)
 
-	lbBackendPoolName := getBackendPoolName(clusterName, service)
+	lbBackendPoolName := clusterName + "-v6"
 	lbBackendPoolID := az.getBackendPoolID(lbName, lbBackendPoolName)
+	lbv4BackendPoolName := clusterName + "-v4"
+	lbv4BackendPoolID := az.getBackendPoolID(lbName, lbv4BackendPoolName)
 
 	lbIdleTimeout, err := getIdleTimeout(service)
 	if wantLb && err != nil {
@@ -63,24 +65,26 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 			newBackendPools = *lb.BackendAddressPools
 		}
 
-		foundBackendPool := false
-		for _, bp := range newBackendPools {
-			if strings.EqualFold(*bp.Name, lbBackendPoolName) {
-				klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - found wanted backendpool. not adding anything", serviceName, wantLb)
-				foundBackendPool = true
-				break
-			} else {
-				klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - found other backendpool %s", serviceName, wantLb, *bp.Name)
+		for _, backendPoolName := range []string{lbBackendPoolName, lbv4BackendPoolName} {
+			foundBackendPool := false
+			for _, bp := range newBackendPools {
+				if strings.EqualFold(*bp.Name, backendPoolName) {
+					klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - found wanted backendpool. not adding anything", serviceName, wantLb)
+					foundBackendPool = true
+					break
+				} else {
+					klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - found other backendpool %s", serviceName, wantLb, *bp.Name)
+				}
 			}
-		}
-		if !foundBackendPool {
-			newBackendPools = append(newBackendPools, network.BackendAddressPool{
-				Name: to.StringPtr(lbBackendPoolName),
-			})
-			klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - adding backendpool", serviceName, wantLb)
+			if !foundBackendPool {
+				newBackendPools = append(newBackendPools, network.BackendAddressPool{
+					Name: to.StringPtr(backendPoolName),
+				})
+				klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb backendpool - adding backendpool", serviceName, wantLb)
 
-			dirtyLb = true
-			lb.BackendAddressPools = &newBackendPools
+				dirtyLb = true
+				lb.BackendAddressPools = &newBackendPools
+			}
 		}
 	}
 
@@ -199,7 +203,7 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 	if err != nil {
 		return nil, err
 	}
-	expectedIPv4Probes, expectedIPv4Rules, err := az.reconcileLoadBalancerRule(service, wantLb, lbv4FrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "-v4")
+	expectedIPv4Probes, expectedIPv4Rules, err := az.reconcileLoadBalancerRule(service, wantLb, lbv4FrontendIPConfigID, lbv4BackendPoolID, lbName, lbIdleTimeout, "-v4")
 	if err != nil {
 		return nil, err
 	}
@@ -292,6 +296,8 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 	// If it is not exist, and no change to that, we don't CreateOrUpdate LB
 	if dirtyLb {
 		if lb.FrontendIPConfigurations == nil || len(*lb.FrontendIPConfigurations) == 0 {
+			// TODO(danmace): implement delete for both pools
+
 			// When FrontendIPConfigurations is empty, we need to delete the Azure load balancer resource itself,
 			// because an Azure load balancer cannot have an empty FrontendIPConfigurations collection
 			klog.V(2).Infof("reconcileLoadBalancer for service(%s): lb(%s) - deleting; no remaining frontendIPConfigurations", serviceName, lbName)
