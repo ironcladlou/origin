@@ -153,9 +153,18 @@ func (az *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, ser
 	serviceName := getServiceName(service)
 	klog.V(5).Infof("ensureloadbalancer(%s): START clusterName=%q", serviceName, clusterName)
 
-	lb, err := az.reconcileLoadBalancer(clusterName, service, nodes, true /* wantLb */)
-	if err != nil {
-		return nil, err
+	var lb *network.LoadBalancer
+	var err error
+	if utilnet.IsIPv6String(service.Spec.ClusterIP) {
+		lb, err = az.reconcileLoadBalancerIPv6(clusterName, service, nodes, true /* wantLb */)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		lb, err = az.reconcileLoadBalancer(clusterName, service, nodes, true /* wantLb */)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	lbStatus, err := az.getServiceLoadBalancerStatus(service, lb)
@@ -174,8 +183,14 @@ func (az *Cloud) EnsureLoadBalancer(ctx context.Context, clusterName string, ser
 
 	updateService := updateServiceLoadBalancerIP(service, to.String(serviceIP))
 	flippedService := flipServiceInternalAnnotation(updateService)
-	if _, err := az.reconcileLoadBalancer(clusterName, flippedService, nil, false /* wantLb */); err != nil {
-		return nil, err
+	if utilnet.IsIPv6String(updateService.Spec.ClusterIP) {
+		if _, err := az.reconcileLoadBalancerIPv6(clusterName, flippedService, nil, false /* wantLb */); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := az.reconcileLoadBalancer(clusterName, flippedService, nil, false /* wantLb */); err != nil {
+			return nil, err
+		}
 	}
 
 	// lb is not reused here because the ETAG may be changed in above operations, hence reconcilePublicIP() would get lb again from cache.
@@ -233,9 +248,17 @@ func (az *Cloud) EnsureLoadBalancerDeleted(ctx context.Context, clusterName stri
 		}
 	}
 
-	if _, err := az.reconcileLoadBalancer(clusterName, service, nil, false /* wantLb */); err != nil {
-		if ignoreErrors(err) != nil {
-			return err
+	if utilnet.IsIPv6String(service.Spec.ClusterIP) {
+		if _, err := az.reconcileLoadBalancerIPv6(clusterName, service, nil, false /* wantLb */); err != nil {
+			if ignoreErrors(err) != nil {
+				return err
+			}
+		}
+	} else {
+		if _, err := az.reconcileLoadBalancer(clusterName, service, nil, false /* wantLb */); err != nil {
+			if ignoreErrors(err) != nil {
+				return err
+			}
 		}
 	}
 
