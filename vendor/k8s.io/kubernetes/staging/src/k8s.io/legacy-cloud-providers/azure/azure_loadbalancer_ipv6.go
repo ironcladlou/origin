@@ -19,7 +19,6 @@ limitations under the License.
 package azure
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/services/network/mgmt/2019-06-01/network"
@@ -29,10 +28,7 @@ import (
 	"k8s.io/klog"
 )
 
-// This ensures load balancer exists and the frontend ip config is setup.
-// This also reconciles the Service's Ports  with the LoadBalancer config.
-// This entails adding rules/probes for expected Ports and removing stale rules/ports.
-// nodes only used if wantLb is true
+// TODO(danmace): internal support removed for now
 func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Service, nodes []*v1.Node, wantLb bool) (*network.LoadBalancer, error) {
 	isInternal := requiresInternalLoadBalancer(service)
 	serviceName := getServiceName(service)
@@ -129,6 +125,8 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 				dirtyConfigs = true
 			}
 		}
+
+		// Handle the IPv6 FIP
 		foundConfig := false
 		for _, config := range newConfigs {
 			if strings.EqualFold(*config.Name, lbFrontendIPConfigName) {
@@ -142,24 +140,7 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 				return nil, err
 			}
 			domainNameLabel := getPublicIPDomainNameLabel(service)
-
-			if ipv6 {
-				pip4, err := az.ensurePublicIPExists(service, false, pipName+"-v4", domainNameLabel, clusterName, shouldPIPExisted)
-				if err != nil {
-					return nil, err
-				}
-				configProperties := &network.FrontendIPConfigurationPropertiesFormat{
-					PublicIPAddress:         &network.PublicIPAddress{ID: pip4.ID},
-					PrivateIPAddressVersion: "IPv4",
-				}
-				newConfigs = append(newConfigs,
-					network.FrontendIPConfiguration{
-						Name:                                    &lbv4FrontendIPConfigName,
-						FrontendIPConfigurationPropertiesFormat: configProperties,
-					})
-			}
-
-			pip, err := az.ensurePublicIPExists(service, ipv6, pipName, domainNameLabel, clusterName, shouldPIPExisted)
+			pip, err := az.ensurePublicIPExists(service, true, pipName, domainNameLabel, clusterName, shouldPIPExisted)
 			if err != nil {
 				return nil, err
 			}
@@ -172,11 +153,42 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 					Name:                                    to.StringPtr(lbFrontendIPConfigName),
 					FrontendIPConfigurationPropertiesFormat: configProperties,
 				})
+			klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - adding", serviceName, wantLb, lbFrontendIPConfigName)
+			dirtyConfigs = true
 		}
 
-		klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - adding", serviceName, wantLb, lbFrontendIPConfigName)
-		dirtyConfigs = true
+		// Handle the IPv4 FIP
+		foundConfig = false
+		for _, config := range newConfigs {
+			if strings.EqualFold(*config.Name, lbv4FrontendIPConfigName) {
+				foundConfig = true
+				break
+			}
+		}
+		if !foundConfig {
+			pipName, shouldPIPExisted, err := az.determinePublicIPName(clusterName, service)
+			if err != nil {
+				return nil, err
+			}
+			domainNameLabel := getPublicIPDomainNameLabel(service)
+			pip, err := az.ensurePublicIPExists(service, false, pipName+"-v4", domainNameLabel, clusterName, shouldPIPExisted)
+			if err != nil {
+				return nil, err
+			}
+			configProperties := &network.FrontendIPConfigurationPropertiesFormat{
+				PublicIPAddress:         &network.PublicIPAddress{ID: pip.ID},
+				PrivateIPAddressVersion: "IPv4",
+			}
+			newConfigs = append(newConfigs,
+				network.FrontendIPConfiguration{
+					Name:                                    &lbv4FrontendIPConfigName,
+					FrontendIPConfigurationPropertiesFormat: configProperties,
+				})
+			klog.V(10).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - adding", serviceName, wantLb, lbv4FrontendIPConfigName)
+			dirtyConfigs = true
+		}
 	}
+
 	if dirtyConfigs {
 		dirtyLb = true
 		lb.FrontendIPConfigurations = &newConfigs
@@ -187,14 +199,12 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 	if err != nil {
 		return nil, err
 	}
-	if ipv6 {
-		ipv4expectedProbes, ipv4expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbv4FrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "-v4")
-		if err != nil {
-			return nil, err
-		}
-		expectedProbes = append(expectedProbes, ipv4expectedProbes...)
-		expectedRules = append(expectedRules, ipv4expectedRules...)
+	expectedIPv4Probes, expectedIPv4Rules, err := az.reconcileLoadBalancerRule(service, wantLb, lbv4FrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "-v4")
+	if err != nil {
+		return nil, err
 	}
+	expectedProbes = append(expectedProbes, expectedIPv4Probes...)
+	expectedRules = append(expectedRules, expectedIPv4Rules...)
 
 	// remove unwanted probes
 	dirtyProbes := false
@@ -310,19 +320,6 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 			if err != nil {
 				klog.V(2).Infof("reconcileLoadBalancer for service(%s) abort backoff: lb(%s) - updating", serviceName, lbName)
 				return nil, err
-			}
-
-			if isInternal {
-				// Refresh updated lb which will be used later in other places.
-				newLB, exist, err := az.getAzureLoadBalancer(lbName)
-				if err != nil {
-					klog.V(2).Infof("reconcileLoadBalancer for service(%s): getAzureLoadBalancer(%s) failed: %v", serviceName, lbName, err)
-					return nil, err
-				}
-				if !exist {
-					return nil, fmt.Errorf("load balancer %q not found", lbName)
-				}
-				lb = &newLB
 			}
 		}
 	}

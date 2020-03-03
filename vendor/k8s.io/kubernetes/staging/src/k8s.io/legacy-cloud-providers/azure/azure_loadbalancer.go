@@ -852,7 +852,7 @@ func (az *Cloud) reconcileLoadBalancer(clusterName string, service *v1.Service, 
 	}
 
 	// update probes/rules
-	expectedProbes, expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbFrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout)
+	expectedProbes, expectedRules, err := az.reconcileLoadBalancerRule(service, wantLb, lbFrontendIPConfigID, lbBackendPoolID, lbName, lbIdleTimeout, "")
 	if err != nil {
 		return nil, err
 	}
@@ -1009,7 +1009,8 @@ func (az *Cloud) reconcileLoadBalancerRule(
 	lbFrontendIPConfigID string,
 	lbBackendPoolID string,
 	lbName string,
-	lbIdleTimeout *int32) ([]network.Probe, []network.LoadBalancingRule, error) {
+	lbIdleTimeout *int32,
+	nameSuffix string) ([]network.Probe, []network.LoadBalancingRule, error) {
 
 	var ports []v1.ServicePort
 	if wantLb {
@@ -1042,6 +1043,9 @@ func (az *Cloud) reconcileLoadBalancerRule(
 
 		for _, protocol := range protocols {
 			lbRuleName := az.getLoadBalancerRuleName(service, protocol, port.Port, subnet(service))
+			if len(nameSuffix) > 0 {
+				lbRuleName += nameSuffix
+			}
 			klog.V(2).Infof("reconcileLoadBalancerRule lb name (%s) rule name (%s)", lbName, lbRuleName)
 
 			transportProto, _, probeProto, err := getProtocolsFromKubernetesProtocol(protocol)
