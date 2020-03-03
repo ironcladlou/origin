@@ -107,21 +107,24 @@ func (az *Cloud) reconcileLoadBalancerIPv6(clusterName string, service *v1.Servi
 	} else {
 		for i := len(newConfigs) - 1; i >= 0; i-- {
 			config := newConfigs[i]
-			// TODO(dmace): why is isFrontendIPChanged detecting a diff if the FIP is owned by the service
-			// based on name prefix, but has a different name overall? Maybe to support name changes? For
-			// ipv6 one service owns two FIPs, so this prefix-checking ownership model is brittle. For now,
-			// just abandon support for name changes and reassess how that's even possible and why it's
-			// important. Bypass the check by ignoring FIPs not owned by the servie and passing the FIP's
-			// existing name which will always pass the name check.
+			// TODO(danmace): not clear why we would ever do isFrontendIPChanged check on a FIP not
+			// owned by this service.
 			if !az.serviceOwnsFrontendIP(config, service) {
 				continue
 			}
+			// TODO(danmace): because isFrontendIPChanged assumes a 1:1 service to FIP ownership, passing
+			// the config name is a way to bypass the check which causes isFrontendIPChanged to return
+			// a diff when the name of the FIP has changed. It seems like the only way that's possible
+			// is when the subnet (on which the name is based) changes. This seems like a very weird way
+			// to do subnet diffing, and maybe I'm misunderstanding. For now, to avoid re-writing the
+			// isFrontendIPChanged function, bypass that check. This might break subnet diffing, or whatever
+			// that code is supposed to be accounting for.
 			isFipChanged, err := az.isFrontendIPChanged(clusterName, config, service, *config.Name)
 			if err != nil {
 				return nil, err
 			}
 			if isFipChanged {
-				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, lbFrontendIPConfigName)
+				klog.V(2).Infof("reconcileLoadBalancer for service (%s)(%t): lb frontendconfig(%s) - dropping", serviceName, wantLb, *config.Name)
 				newConfigs = append(newConfigs[:i], newConfigs[i+1:]...)
 				dirtyConfigs = true
 			}
