@@ -7,6 +7,7 @@ import (
 	"k8s.io/kubectl/pkg/util/templates"
 
 	"github.com/openshift/origin/pkg/test/ginkgo"
+	"k8s.io/apimachinery/pkg/util/sets"
 
 	_ "github.com/openshift/origin/test/extended"
 	_ "github.com/openshift/origin/test/extended/util/annotate/generated"
@@ -50,7 +51,11 @@ var staticSuites = []*ginkgo.TestSuite{
 		The disruptive test suite.
 		`),
 		Matches: func(name string) bool {
-			return strings.Contains(name, "[Feature:EtcdRecovery]") || strings.Contains(name, "[Feature:NodeRecovery]")
+			return sets.NewString(
+				"[Feature:EtcdRecovery]",
+				"[Feature:NodeRecovery]",
+				"[Feature:Performance:Benchmark]",
+			).Has(name)
 		},
 		TestTimeout: 60 * time.Minute,
 	},

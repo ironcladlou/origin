@@ -30,22 +30,22 @@ type options struct {
 	podsPerNamespace int
 }
 
-var _ = g.Describe("[sig-scalability][Feature:Performance] Managed cluster should", func() {
+var _ = g.Describe("[sig-scalability][Feature:Performance:Benchmark] Managed cluster should", func() {
 	oc := exutil.NewCLI("perf-client")
 	defer g.GinkgoRecover()
 
 	var opts options
-	flag.IntVar(&opts.concurrency, "concurrency", 100, "number of concurrent workers")
-	flag.IntVar(&opts.burst, "burst", 10, "burst size")
-	flag.DurationVar(&opts.delay, "delay", 1*time.Second, "step delay")
-	flag.DurationVar(&opts.duration, "duration", 1*time.Minute, "test duration after steady state")
-	flag.DurationVar(&opts.timeout, "timeout", 5*time.Minute, "how long to wait for deployment/pod to be ready")
-	flag.DurationVar(&opts.longevity, "pod-longevity", 30*time.Second, "how long we want pod to live")
-	flag.IntVar(&opts.fixedPool, "namespaces", 1, "fixed namespace pool size")
-	flag.IntVar(&opts.podsPerNamespace, "pods-per-namespace", 1, "number of pods per namespace")
+	flag.IntVar(&opts.concurrency, "churn-concurrency", 100, "number of concurrent workers")
+	flag.IntVar(&opts.burst, "churn-burst", 10, "burst size")
+	flag.DurationVar(&opts.delay, "churn-delay", 1*time.Second, "step delay")
+	flag.DurationVar(&opts.duration, "churn-duration", 1*time.Minute, "test duration after steady state")
+	flag.DurationVar(&opts.timeout, "churn-timeout", 5*time.Minute, "how long to wait for deployment/pod to be ready")
+	flag.DurationVar(&opts.longevity, "churn-pod-longevity", 30*time.Second, "how long we want pod to live")
+	flag.IntVar(&opts.fixedPool, "churn-namespaces", 1, "fixed namespace pool size")
+	flag.IntVar(&opts.podsPerNamespace, "churn-pods-per-namespace", 1, "number of pods per namespace")
 	flag.Parse()
 
-	g.It("not experience disruption during namespace/pod churn", func() {
+	g.It("not experience workload disruption during namespace/pod churn", func() {
 		client := oc.AdminKubeClient()
 
 		config := oc.AdminConfig()
