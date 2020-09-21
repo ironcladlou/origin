@@ -2,17 +2,17 @@ package perf
 
 import (
 	"context"
-	"flag"
 	"time"
 
 	g "github.com/onsi/ginkgo"
 	o "github.com/onsi/gomega"
 
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/openshift/origin/test/extended/perf/tools/core"
 	"github.com/openshift/origin/test/extended/perf/tools/namespace"
 	"github.com/openshift/origin/test/extended/perf/tools/poddensity"
 	exutil "github.com/openshift/origin/test/extended/util"
-	corev1 "k8s.io/api/core/v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -20,32 +20,42 @@ import (
 )
 
 type options struct {
-	concurrency      int
-	burst            int
-	delay            time.Duration
-	duration         time.Duration
-	timeout          time.Duration
-	longevity        time.Duration
-	fixedPool        int
+	// number of concurrent workers
+	concurrency int
+	// burst size
+	burst int
+	// step delay
+	delay time.Duration
+	// test duration after steady state
+	duration time.Duration
+	// how long to wait for the deployment/pod to be ready
+	timeout time.Duration
+	// how long pods should live
+	longevity time.Duration
+	// fixed namespace pool size
+	fixedPool int
+	// number of pods per namespace
 	podsPerNamespace int
+}
+
+var ipiChurnDefaults = options{
+	concurrency:      30,
+	burst:            10,
+	delay:            1 * time.Second,
+	duration:         10 * time.Minute,
+	timeout:          5 * time.Minute,
+	longevity:        60 * time.Second,
+	fixedPool:        30,
+	podsPerNamespace: 0,
 }
 
 var _ = g.Describe("[sig-scalability][Feature:Performance:Benchmark] Managed cluster should", func() {
 	oc := exutil.NewCLI("perf-client")
 	defer g.GinkgoRecover()
 
-	var opts options
-	flag.IntVar(&opts.concurrency, "churn-concurrency", 100, "number of concurrent workers")
-	flag.IntVar(&opts.burst, "churn-burst", 10, "burst size")
-	flag.DurationVar(&opts.delay, "churn-delay", 1*time.Second, "step delay")
-	flag.DurationVar(&opts.duration, "churn-duration", 1*time.Minute, "test duration after steady state")
-	flag.DurationVar(&opts.timeout, "churn-timeout", 5*time.Minute, "how long to wait for deployment/pod to be ready")
-	flag.DurationVar(&opts.longevity, "churn-pod-longevity", 30*time.Second, "how long we want pod to live")
-	flag.IntVar(&opts.fixedPool, "churn-namespaces", 1, "fixed namespace pool size")
-	flag.IntVar(&opts.podsPerNamespace, "churn-pods-per-namespace", 1, "number of pods per namespace")
-	flag.Parse()
-
 	g.It("not experience workload disruption during namespace/pod churn", func() {
+		opts := ipiChurnDefaults
+
 		client := oc.AdminKubeClient()
 
 		config := oc.AdminConfig()

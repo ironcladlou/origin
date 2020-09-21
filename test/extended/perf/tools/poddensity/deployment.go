@@ -261,6 +261,10 @@ func new(namespace, prefix, sa, cm, secret string) *appsv1.Deployment {
 									corev1.ResourceCPU:    resource.MustParse("10m"),
 									corev1.ResourceMemory: resource.MustParse("10m"),
 								},
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("10m"),
+									corev1.ResourceMemory: resource.MustParse("10m"),
+								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{
